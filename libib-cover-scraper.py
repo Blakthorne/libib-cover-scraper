@@ -2,27 +2,49 @@ import requests
 import shutil
 from bs4 import BeautifulSoup
 import os
-import sys
+from os.path import exists
+import argparse
 
 # Get the names of pre-existing images in the directory
 def get_existing_images():
-    return os.listdir(image_dir_path)
+    return os.listdir(args.output)
 
 
 # Download the image with the book title as its file name
-def download_image(url, title):
+def download_image(image_code, title):
+            
+    # Reformat the image source to have correct URL
+    [front_waste, source] = image_code.split("/")
+    url = "https://d23tvywehq0xq.cloudfront.net/" + source
 
     # Retrieve the image from the provided URL
     image = requests.get(url, stream=True)
 
     # If the request was sucessful, create the image file
     if image.status_code == 200:
-        with open(image_dir_path + title, "xb") as  f:
+        with open(args.output + title, "xb") as  f:
             image.raw.decode_content = True
             shutil.copyfileobj(image.raw, f)
         print("Downloaded " + title + "...")
     else:
         print("Request Failed")
+
+
+# Rename the image files in the sibling folder containing the previously downloaded images
+def rename_image_files(image_code, title):
+
+    # Reformat the image source to have the correct file name
+    [front_waste, source] = image_code.split("/")
+    existing_image_file_name = args.folder + source
+    new_image_file_name = args.folder + title
+
+    if exists(existing_image_file_name):
+        os.rename(existing_image_file_name, new_image_file_name)
+        print("Successfully renamed image file associated with " + title + "...")
+    elif exists(new_image_file_name):
+        print(title + " already exists...")
+    else:
+        print("Couldn't find image file associated with " + title + "...")
 
 
 # Append ` (copy #)` to a filename if it already exists
@@ -77,53 +99,48 @@ def get_titles_and_image_files(soup):
         # Make sure both title and image_code are not empty
         if title_tag != "" and title_tag != None and image_code != "" and image_code != None:
 
-            # Reformat the image source to have correct URL
-            [front_waste, source] = image_code.split("/")
-            url = "https://d23tvywehq0xq.cloudfront.net/" + source
-
+            # Get the title from the title tag
             title = get_final_title(title_tag)
 
-            # Download the image
-            download_image(url, title)
+            # Take appropriate action based on the value of should_download
+            if args.download:
+                download_image(image_code, title)
+            else:
+                rename_image_files(image_code, title)
 
 
 # Open an HTML file and create a parsed soup
 def create_soup():
 
     # Import the html file
-    page = open("./Libib _ Library management web app.html").read()
+    page = open("./libib_page.html").read()
 
     # Parse it and create a soup
     return BeautifulSoup(page, "html.parser")
 
 
-# Get the directory path the command line argument
-def get_dir():
+# If the provided directory names don't end with a forward slash, add one
+def format_dirs():
+    if args.output is not None and args.output[-1] != "/":
+        args.output += "/"
 
-    # Do some error checking on the provided directory argument.
-    # If anything is wrong, print an error message and exit the program
-    if len(sys.argv) < 2:
-        print("Too few arguments given. Please call the program in this format: \"libib-cover-scraper.py dir\"")
-        sys.exit()
-    if len(sys.argv) > 2:
-        print("Too many arguments given. Please call the program in this format: \"libib-cover-scraper.py dir\"")
-        sys.exit()
-    elif not os.path.exists(sys.argv[1]):
-        print("The directory provided does not exist.")
-        sys.exit()
-    elif len(os.listdir(sys.argv[1])):
-        print("The directory provided is not empty. It must be empty.")
-        sys.exit()
+    if args.folder is not None and args.folder[-1] != "/":
+        args.folder += "/"
 
-    # Extract the directory
-    dir = sys.argv[1]
+        
+# Initialize command line argument parser
+def create_command_line_parser():
+    parser = argparse.ArgumentParser(
+        prog="Libib Cover Scraper",
+        description="Create a folder of titled images from an online Libib library")
 
-    # If the directory doesn't end in a forward slash, add one
-    if dir[-1] != "/":
-        dir += "/"
+    parser.add_argument("-o", "--output", help = "Define output folder when downloading the images")
+    parser.add_argument("-f", "--folder", help = "Define folder containing image files when not needing to download")
+    parser.add_argument("-d", "--download", help = "Define whether to download the images or rename images in an existing folder", action="store_true")
 
-    # Return the path to the directory
-    return dir
+    return parser
 
-image_dir_path = get_dir()
+
+args = create_command_line_parser().parse_args()
+
 get_titles_and_image_files(create_soup())
