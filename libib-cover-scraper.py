@@ -5,6 +5,8 @@ import os
 from os.path import exists
 import argparse
 
+image_files_in_existing = []
+
 # Get the names of pre-existing images in the directory
 def get_existing_images():
     return os.listdir(args.output)
@@ -38,13 +40,15 @@ def rename_image_files(image_code, title):
     existing_image_file_name = args.folder + source
     new_image_file_name = args.folder + title
 
+    image_files_in_existing.append(new_image_file_name)
+
     if exists(existing_image_file_name):
         os.rename(existing_image_file_name, new_image_file_name)
         print("Successfully renamed image file associated with " + title + "...")
     elif exists(new_image_file_name):
         print(title + " already exists...")
     else:
-        print("Couldn't find image file associated with " + title + "...")
+        print("Couldn't find file image file associated with " + title + "...")
 
 
 # Append ` (copy #)` to a filename if it already exists
@@ -142,5 +146,12 @@ def create_command_line_parser():
 
 
 args = create_command_line_parser().parse_args()
+format_dirs()
 
 get_titles_and_image_files(create_soup())
+
+if args.download is False:
+    for file in os.listdir(args.folder):
+        if (args.folder + file) not in image_files_in_existing:
+            os.remove(args.folder + file)
+            print("Removed file " + file)
