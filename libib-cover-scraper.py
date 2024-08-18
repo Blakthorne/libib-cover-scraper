@@ -5,7 +5,7 @@ import os
 from os.path import exists
 import argparse
 
-image_files_in_existing = []
+image_files_in_existing_folder = []
 
 # Get the names of pre-existing images in the directory
 def get_existing_images():
@@ -40,7 +40,7 @@ def rename_image_files(image_code, title):
     existing_image_file_name = args.folder + source
     new_image_file_name = args.folder + title
 
-    image_files_in_existing.append(new_image_file_name)
+    image_files_in_existing_folder.append(new_image_file_name)
 
     if exists(existing_image_file_name):
         os.rename(existing_image_file_name, new_image_file_name)
@@ -52,13 +52,13 @@ def rename_image_files(image_code, title):
 
 
 # Append ` (copy #)` to a filename if it already exists
-def create_title_copy(title, existing_images):
+def create_title_copy(title, existing_titles):
 
     copy_number = 0
     final_title = title
 
     # Keep increasing the copy number until we get to one that doesn't exist yet
-    while final_title in existing_images:
+    while final_title in existing_titles:
         copy_number += 1
         final_title = title + " (copy " + str(copy_number) + ")"
 
@@ -66,29 +66,42 @@ def create_title_copy(title, existing_images):
 
 
 # Create a compliant and distinct filename for the image based on the book title
-def get_final_title(title_tag):
-
-    # Get the current list of images in the directory here instead of earlier
-    # so that it's always an up-to-date list.
-    # It takes a lot longer this way, but prevents the program from crashing
-    existing_images = get_existing_images()
+def get_final_title(title_tag, titles_dict):
 
     # Get the text for the book title from the title tag
     # and ake sure the title doesn't contain a forward slash, as that is a forbidden filename character in Linux
     title = title_tag.string.replace("/", "-")
 
     # If the title already exists, create a numbered copy of it
-    if title in existing_images:
-        title = create_title_copy(title, existing_images)
+    if title in titles_dict.values():
+        title = create_title_copy(title, titles_dict.values())
 
     return title
+
+
+# Remove files that were downloaded with the html page
+# that aren't book cover images so the directory isn't bloated
+def remove_extra_files():
+
+    # Iterate over all the files in the directory
+    for file in os.listdir(args.folder):
+
+        # If the file doesn't have a book title for a name, remove it
+        if (args.folder + file) not in image_files_in_existing_folder:
+            os.remove(args.folder + file)
+            print("Removed file " + file)
 
 
 # Find the image and book titles from an HTML soup
 def get_titles_and_image_files(soup):
 
+    # Create the dictionary that will hold image code and title pairs
+    titles_dict = {}
+
     # Extract all the image tags from the soup
     images = soup.find_all('img')
+
+    print("Extrapolating book titles...")
 
     # Iterate over all the image tags
     for image in images:
@@ -104,13 +117,12 @@ def get_titles_and_image_files(soup):
         if title_tag != "" and title_tag != None and image_code != "" and image_code != None:
 
             # Get the title from the title tag
-            title = get_final_title(title_tag)
+            title = get_final_title(title_tag, titles_dict)
 
-            # Take appropriate action based on the value of should_download
-            if args.download:
-                download_image(image_code, title)
-            else:
-                rename_image_files(image_code, title)
+            titles_dict[image_code] = title
+
+    # Return the dictionary
+    return titles_dict
 
 
 # Open an HTML file and create a parsed soup
@@ -125,11 +137,14 @@ def create_soup():
 
 # If the provided directory names don't end with a forward slash, add one
 def format_dirs():
+
     if args.output is not None and args.output[-1] != "/":
         args.output += "/"
 
     if args.folder is not None and args.folder[-1] != "/":
         args.folder += "/"
+
+    return args
 
         
 # Initialize command line argument parser
@@ -144,14 +159,23 @@ def create_command_line_parser():
 
     return parser
 
-
+# Parse command line arguments
 args = create_command_line_parser().parse_args()
+
+# Make sure that directories are in the correct format
 format_dirs()
 
-get_titles_and_image_files(create_soup())
+# Create the named files
+titles_dict = get_titles_and_image_files(create_soup())
 
+# Take appropriate action based on the value of `download`
+if args.download:
+    for image_code in titles_dict.keys():
+        download_image(image_code, titles_dict[image_code])
+else:
+    for image_code in titles_dict.keys():
+        rename_image_files(image_code, titles_dict[image_code])
+
+# If we renamed existing files, clean up the directory
 if args.download is False:
-    for file in os.listdir(args.folder):
-        if (args.folder + file) not in image_files_in_existing:
-            os.remove(args.folder + file)
-            print("Removed file " + file)
+    remove_extra_files()
