@@ -5,13 +5,6 @@ import os
 from os.path import exists
 import argparse
 
-image_files_in_existing_folder = []
-
-# Get the names of pre-existing images in the directory
-def get_existing_images():
-    return os.listdir(args.output)
-
-
 # Download the image with the book title as its file name
 def download_image(image_code, title):
             
@@ -39,8 +32,6 @@ def rename_image_files(image_code, title):
     [front_waste, source] = image_code.split("/")
     existing_image_file_name = args.folder + source
     new_image_file_name = args.folder + title
-
-    image_files_in_existing_folder.append(new_image_file_name)
 
     if exists(existing_image_file_name):
         os.rename(existing_image_file_name, new_image_file_name)
@@ -81,13 +72,13 @@ def get_final_title(title_tag, titles_dict):
 
 # Remove files that were downloaded with the html page
 # that aren't book cover images so the directory isn't bloated
-def remove_extra_files():
+def remove_extra_files(titles_dict):
 
     # Iterate over all the files in the directory
     for file in os.listdir(args.folder):
 
         # If the file doesn't have a book title for a name, remove it
-        if (args.folder + file) not in image_files_in_existing_folder:
+        if (file) not in titles_dict.values():
             os.remove(args.folder + file)
             print("Removed file " + file)
 
@@ -129,7 +120,7 @@ def get_titles_and_image_files(soup):
 def create_soup():
 
     # Import the html file
-    page = open("./libib_page.html").read()
+    page = open(args.input).read()
 
     # Parse it and create a soup
     return BeautifulSoup(page, "html.parser")
@@ -153,9 +144,11 @@ def create_command_line_parser():
         prog="Libib Cover Scraper",
         description="Create a folder of titled images from an online Libib library")
 
-    parser.add_argument("-o", "--output", help = "Define output folder when downloading the images")
-    parser.add_argument("-f", "--folder", help = "Define folder containing image files when not needing to download")
-    parser.add_argument("-d", "--download", help = "Define whether to download the images or rename images in an existing folder", action="store_true")
+    parser.add_argument("input", help = "Required Path to the HTML file from which to extract book titles")
+    parser.add_argument("-d", "--download", help = "Provide this option if wanting to download the images", action="store_true")
+    parser.add_argument("-o", "--output", help = "If the download flag is provided, define the images download folder")
+    parser.add_argument("-f", "--folder", help = "Folder containing image files when not wanting to download")
+    parser.add_argument("-r", "--remove", help = "Provide this option if wanting to remove the HTML file after completion", action="store_true")
 
     return parser
 
@@ -165,17 +158,25 @@ args = create_command_line_parser().parse_args()
 # Make sure that directories are in the correct format
 format_dirs()
 
-# Create the named files
+# Create the dictionary associating image codes and book titles
 titles_dict = get_titles_and_image_files(create_soup())
 
 # Take appropriate action based on the value of `download`
 if args.download:
     for image_code in titles_dict.keys():
         download_image(image_code, titles_dict[image_code])
+    print("\nFinished downloading files...\n")
 else:
     for image_code in titles_dict.keys():
         rename_image_files(image_code, titles_dict[image_code])
+    print("\nFinished renaming files...\n")
 
 # If we renamed existing files, clean up the directory
 if args.download is False:
-    remove_extra_files()
+    remove_extra_files(titles_dict)
+    print("\nFinished removing extra files...\n")
+
+# Remove the HTML file if desired
+if args.remove is True:
+    os.remove(args.input)
+    print("Removed HTML file...")
